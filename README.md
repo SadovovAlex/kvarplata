@@ -130,6 +130,6 @@ kvarplata/
 
 ## Контакты
 
-- Автор: Ваше Имя
-- Email: your.email@example.com
-- Telegram: @your_handle
+- Автор: Садовов Александр
+- Email: aasdvv@gmail.com
+- Telegram: [@wrwfx](https://t.me/wrwfx)
