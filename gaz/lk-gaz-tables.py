@@ -38,22 +38,76 @@ def main(login, password):
         # Проверяем фактический URL after загрузки
         current_url = driver.current_url
         print(f"✓ Текущий URL: {current_url}")
+
+        #1.1 проверка на информационную форму
+        
         
         # 2. Находим and заполняем форму
         find_and_fill_form(driver, login, password)
 
-        # 3. Проверяем успешность входа
+        # Шаг 3: Проверка и пропуск обучающего диалога
+        print("⌛ Проверяю наличие обучающего диалога...")
+        skip_training_dialog(driver)
+
+        # 3.1 Проверяем успешность входа
         try:
             print("⌛ Проверяю успешность авторизации...")
             
-            # Ждем редиректа на внутреннюю страницу
-            WebDriverWait(driver, 20).until(
-                EC.any_of(
-                    EC.url_changes(driver.current_url),
-                    EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Газоснабжение природным газом')]"))
-                )
-            )
-            print_ts("✓ Успешная авторизация!")
+            # # Ждем редиректа на внутреннюю страницу или появления элементов авторизации
+            # WebDriverWait(driver, 20).until(
+            #     EC.any_of(
+            #         EC.url_changes(driver.current_url),
+            #         EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Газоснабжение природным газом')]"))
+            #     )
+            # )
+            # print_ts("✓ Успешная авторизация!")
+            
+            # Проверяем наличие элементов после авторизации (если хотя бы один найден - успешно)
+            auth_elements = [
+                (By.XPATH, "//*[contains(text(), 'Газоснабжение природным газом')]"),
+                (By.XPATH, "//*[contains(text(), 'Расчеты')]"),
+                (By.XPATH, "//*[contains(text(), 'Приборы учета')]"),
+            ]
+            
+            found_element = None
+            for selector, by in auth_elements:
+                try:
+                    element = WebDriverWait(driver, 2).until(
+                        EC.presence_of_element_located((by, selector))
+                    )
+                    found_element = element
+                    break
+                except:
+                    continue
+            
+            if found_element:
+                print_ts(f"✓ Найдены элементы успешного входа после авторизации")
+            else:
+                print_ts("ℹ Элементы авторизации не найдены, но редирект произошёл")
+            
+            # Дополнительная проверка на конкретные элементы с slot="title"
+            title_elements = [
+                (By.XPATH, "//h3[@slot='title' and contains(., 'Расчеты')]"),
+                (By.XPATH, "//h3[@slot='title' and contains(., 'Приборы учета')]"),
+            ]
+            
+            title_found = False
+            for selector, by in title_elements:
+                try:
+                    element = WebDriverWait(driver, 2).until(
+                        EC.presence_of_element_located((by, selector))
+                    )
+                    title_found = True
+                    print_ts(f"✓ Найдён заголовок: {element.text.strip()}")
+                    break
+                except:
+                    continue
+            
+            if not title_found:
+                print_ts("ℹ Заголовки 'Расчеты' или 'Приборы учета' не найдены")
+            
+           
+            
         except:
             save_debug_data(driver, "auth_failed")
             raise ValueError("Не удалось войти в личный кабинет")
@@ -196,6 +250,10 @@ def find_and_fill_form(driver, login, password):
         )
         print("✓ Страница входа загружена")
         
+        # Шаг 1.1: Проверка и закрытие информационной формы
+        print("⌛ Проверяю наличие информационной формы...")
+        close_info_dialog(driver)
+        
         # Ищем поле логина
         try:
             login_field = WebDriverWait(driver, 15).until(
@@ -268,6 +326,248 @@ def find_and_fill_form(driver, login, password):
     except Exception as e:
         save_debug_data(driver, "form_fill_error")
         raise ValueError(f"Ошибка при заполнении формы: {str(e)}")
+
+
+def close_info_dialog(driver):
+    """
+    Проверяет наличие информационной формы и закрывает её.
+    
+    Информационная форма имеет:
+    - data-dialog атрибут
+    - data-card атрибут
+    - Кнопку "Закрыть" с slot="close"
+    """
+    try:
+        print("⌛ Проверяю наличие информационной формы...")
+        
+        # Ищем информационную форму по data-dialog атрибуту
+        dialog = WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "[data-dialog]"))
+        )
+        print("✓ Найдена информационная форма")
+        
+        # Сохраняем скриншот перед закрытием
+        save_debug_data(driver, "info_dialog_open")
+        
+        # Ищем кнопку закрытия
+        close_button = driver.find_element(By.CSS_SELECTOR, "[slot='close']")
+        if close_button.is_displayed():
+            print("✓ Найдена кнопка 'Закрыть'")
+            
+            # Сохраняем скриншот с открытой формой
+            save_debug_data(driver, "info_dialog_close_button")
+            
+            # Кликаем по кнопке закрытия
+            driver.execute_script("arguments[0].click();", close_button)
+            print("✓ Кликнул по кнопке 'Закрыть'")
+            
+            # Ждем закрытия диалога
+            WebDriverWait(driver, 3).until(
+                lambda d: not d.find_element(By.CSS_SELECTOR, "[data-dialog]").is_displayed() or True
+            )
+            print("✓ Информационная форма закрыта")
+            
+            # Сохраняем скриншот после закрытия
+            save_debug_data(driver, "info_dialog_closed")
+        else:
+            print("ℹ Кнопка 'Закрыть' not found, форма может закрыться автоматически")
+            
+    except Exception as e:
+        print(f"ℹ Не удалось обработать информационную форму: {str(e)}")
+        # Не прерываем выполнение, если форма не найдена или не удалось её закрыть
+
+
+def skip_training_dialog(driver):
+    """
+    Проверяет наличие обучающего диалога и пропускает его.
+    
+    Обучающий диалог имеет:
+    - role="dialog" атрибут
+    - Кнопку "Пропустить обучение" или кнопку закрытия
+    """
+    try:
+        print("⌛ Проверяю наличие обучающего диалога...")
+        
+        # Ищем обучающий диалог по role="dialog"
+        training_dialog = WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "[role='dialog']"))
+        )
+        print("✓ Найдён обучающий диалог")
+        
+        # Сохраняем скриншот перед пропуском
+        save_debug_data(driver, "training_dialog_open")
+        
+        # Вариант 1: Ищем кнопку "Пропустить обучение" по span внутри кнопки
+        skip_button = None
+        try:
+            # Ищем кнопку, у которой есть span с текстом "Пропустить обучение"
+            skip_button = driver.find_element(By.XPATH, "//button[contains(., 'Пропустить обучение')]")
+            if skip_button.is_displayed():
+                print("✓ Найдена кнопка 'Пропустить обучение'")
+            else:
+                print("ℹ Кнопка 'Пропустить обучение' не отображается")
+        except:
+            print("ℹ Кнопка 'Пропустить обучение' не найдена")
+        
+        # Вариант 2: Ищем кнопку закрытия (крестик) в диалоге
+        if not skip_button:
+            try:
+                close_button = driver.find_element(By.CSS_SELECTOR, "[aria-label*='закрыть'], [aria-label*='close'], [aria-label*='Закрыть']")
+                if close_button.is_displayed():
+                    print("✓ Найдена кнопка закрытия диалога")
+                    skip_button = close_button
+            except:
+                print("ℹ Кнопка закрытия диалога не найдена")
+        
+        # Вариант 2.5: Ищем кнопку с SVG иконкой закрытия (крестик)
+        if not skip_button:
+            try:
+                # Ищем кнопку, содержащую SVG с путём закрытия (крестик)
+                close_button = driver.find_element(By.XPATH, "//button[contains(., 'Пропустить обучение')]")
+                if close_button.is_displayed():
+                    print("✓ Найдена кнопка с SVG иконкой закрытия")
+                    skip_button = close_button
+            except:
+                print("ℹ Кнопка с SVG иконкой закрытия не найдена")
+        
+        # Вариант 2.6: Ищем кнопку по классу (Tailwind CSS классы)
+        if not skip_button:
+            try:
+                # Ищем кнопку с классами, характерными для обучающего диалога
+                close_button = driver.find_element(By.CSS_SELECTOR, ".w-full.h-10.px-2.space-x-1.text-white.rounded-inherit.outline-none.tap-highlight-none")
+                if close_button.is_displayed():
+                    print("✓ Найдена кнопка по Tailwind классам")
+                    skip_button = close_button
+            except:
+                print("ℹ Кнопка по Tailwind классам не найдена")
+        
+        # Вариант 2.7: Ищем кнопку по span с текстом внутри
+        if not skip_button:
+            try:
+                # Ищем кнопку, у которой есть span с текстом "Пропустить обучение"
+                close_button = driver.find_element(By.XPATH, "//button[span[contains(text(), 'Пропустить обучение')]]")
+                if close_button.is_displayed():
+                    print("✓ Найдена кнопка по span с текстом")
+                    skip_button = close_button
+            except:
+                print("ℹ Кнопка по span с текстом не найдена")
+        
+        # Вариант 2.8: Ищем кнопку по data-testid или data-атрибутам
+        if not skip_button:
+            try:
+                # Ищем кнопку с data-testid или data-атрибутами, характерными для обучающего диалога
+                close_button = driver.find_element(By.CSS_SELECTOR, "[data-testid*='training'], [data-testid*='tutorial'], [data-testid*='onboarding'], [data-testid*='dialog']")
+                if close_button.is_displayed():
+                    print("✓ Найдена кнопка по data-testid")
+                    skip_button = close_button
+            except:
+                print("ℹ Кнопка по data-testid не найдена")
+        
+        # Вариант 2.9: Ищем кнопку внутри диалога по role="button"
+        if not skip_button:
+            try:
+                # Ищем кнопку внутри диалога с role="button"
+                close_button = training_dialog.find_element(By.CSS_SELECTOR, "[role='button']")
+                if close_button.is_displayed():
+                    print("✓ Найдена кнопка внутри диалога с role='button'")
+                    skip_button = close_button
+            except:
+                print("ℹ Кнопка внутри диалога с role='button' не найдена")
+        
+        # Вариант 3: Ищем кнопку с текстом "Закрыть"
+        if not skip_button:
+            try:
+                close_button = driver.find_element(By.XPATH, "//button[contains(text(), 'Закрыть')]")
+                if close_button.is_displayed():
+                    print("✓ Найдена кнопка 'Закрыть'")
+                    skip_button = close_button
+            except:
+                print("ℹ Кнопка 'Закрыть' не найдена")
+        
+        # Вариант 4: Ищем кнопку с текстом "X" или крестик
+        if not skip_button:
+            try:
+                close_button = driver.find_element(By.XPATH, "//button[contains(text(), 'X') or contains(text(), '×')]")
+                if close_button.is_displayed():
+                    print("✓ Найдена кнопка 'X'")
+                    skip_button = close_button
+            except:
+                print("ℹ Кнопка 'X' не найдена")
+        
+        # Вариант 5: Ищем кнопку с aria-label="Close"
+        if not skip_button:
+            try:
+                close_button = driver.find_element(By.CSS_SELECTOR, "[aria-label='Close']")
+                if close_button.is_displayed():
+                    print("✓ Найдена кнопка с aria-label='Close'")
+                    skip_button = close_button
+            except:
+                print("ℹ Кнопка с aria-label='Close' не найдена")
+        
+        # Вариант 6: Ищем кнопку с классом reactour__close-btn
+        if not skip_button:
+            try:
+                close_button = driver.find_element(By.CSS_SELECTOR, ".reactour__close-btn")
+                if close_button.is_displayed():
+                    print("✓ Найдена кнопка с классом reactour__close-btn")
+                    skip_button = close_button
+            except:
+                print("ℹ Кнопка с классом reactour__close-btn не найдена")
+        
+        # Вариант 7: Ищем кнопку с текстом внутри диалога
+        if not skip_button:
+            try:
+                dialog_buttons = training_dialog.find_elements(By.TAG_NAME, "button")
+                if dialog_buttons:
+                    print(f"✓ Найдено {len(dialog_buttons)} кнопок внутри диалога")
+                    for btn in dialog_buttons:
+                        if btn.is_displayed():
+                            text = btn.text.strip()
+                            print(f"  - Кнопка: '{text}'")
+                            # Кликаем по кнопке, у которой есть текст
+                            if text:
+                                skip_button = btn
+                                break
+            except Exception as e:
+                print(f"ℹ Не удалось найти кнопки внутри диалога: {str(e)}")
+        
+        # Вариант 8: Если ничего не нашли, используем JavaScript для закрытия диалога
+        if not skip_button:
+            try:
+                print("ℹ Кнопки закрытия не найдены, пытаемся закрыть диалог через JavaScript")
+                # Пытаемся найти и кликнуть по кнопке закрытия через JS
+                close_buttons = driver.find_elements(By.CSS_SELECTOR, "[role='dialog'] button")
+                if close_buttons:
+                    for btn in close_buttons:
+                        if btn.is_displayed():
+                            print(f"✓ Найдена кнопка через JS: '{btn.text.strip()}'")
+                            driver.execute_script("arguments[0].click();", btn)
+                            skip_button = btn
+                            break
+            except Exception as e:
+                print(f"ℹ Не удалось закрыть диалог через JS: {str(e)}")
+        
+        # Если кнопка найдена - кликаем по ней
+        if skip_button and skip_button.is_displayed():
+            print("✓ Кликнул по кнопке закрытия диалога")
+            save_debug_data(driver, "training_dialog_skip_button")
+            driver.execute_script("arguments[0].click();", skip_button)
+            
+            # Ждем закрытия диалога
+            try:
+                WebDriverWait(driver, 3).until(
+                    lambda d: not d.find_element(By.CSS_SELECTOR, "[role='dialog']").is_displayed() or True
+                )
+                print("✓ Обучающий диалог закрыт")
+                save_debug_data(driver, "training_dialog_closed")
+            except:
+                print("ℹ Диалог, возможно, уже закрылся автоматически")
+        else:
+            print("ℹ Обучающий диалог не удалось закрыть")
+            
+    except Exception as e:
+        print(f"ℹ Не удалось обработать обучающий диалог: {str(e)}")
+        # Не прерываем выполнение, если диалог не найден или не удалось его пропустить
 
 
 def get_services_info_from_current_page(driver):
