@@ -25,6 +25,10 @@ PERSONAL_INFO_URL = f"{BASE_URL}personal/info/"
 DEBUG_DIR = "debug_data"
 os.makedirs(DEBUG_DIR, exist_ok=True)
 
+# Папка для результатов (выше корня проекта)
+OUTPUT_DIR = "../output"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
 def main(login, password):
      #driver = init_driver_windows()
     service = Service(ChromeDriverManager().install())
@@ -96,8 +100,29 @@ def main(login, password):
         except Exception as e:
             print(f"Ошибка при получении данных счетчиков: {str(e)}")
 
+        # Создаём структуру для результатов
+        result_data = {
+            "account_info": {
+                "number": account_info.get('number', 'N/A'),
+                "debt": account_info.get('debt', 'N/A'),
+                "debt_type": account_info.get('debt_type', 'Задолженность'),
+                "address": account_info.get('address', 'N/A')
+            },
+            "meters": []
+        }
+        
         # Выводим результаты
-        display_results(account_info, meters_data)
+        display_results(account_info, meters_data, result_data)
+        
+        # Сохраняем результаты в JSON файл
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        json_filename = f"{timestamp}_result.json"
+        json_filepath = os.path.join(OUTPUT_DIR, json_filename)
+        
+        with open(json_filepath, "w", encoding="utf-8") as f:
+            json.dump(result_data, f, ensure_ascii=False, indent=2)
+        
+        print(f"\n✓ Результаты сохранены в: {json_filepath}")
 
     except Exception as e:
         print(f"\nCritical error: {str(e)}")
@@ -107,6 +132,8 @@ def main(login, password):
     finally:
         driver.quit()
         print("\nЗавершение работы скрипта")
+    
+    return result_data
 
 
 def save_debug_data(driver, prefix):
@@ -439,7 +466,7 @@ def format_date_info(additional_info):
     
     return result
 
-def display_results(account_info, meters_data):
+def display_results(account_info, meters_data, result_data):
     """Форматирует и выводит результаты в JSON и текстовом формате."""
     print("\n" + "="*60)
     print("РЕЗУЛЬТАТЫ ПАРСИНГА")
@@ -456,29 +483,7 @@ def display_results(account_info, meters_data):
     else:
         debt_type = "Задолженность"
     
-    # Подготовка данных для JSON
-    result_data = {
-        "account_info": {
-            "number": account_info.get('number', 'N/A'),
-            "debt": debt_value,
-            "debt_type": debt_type,
-            "address": account_info.get('address', 'N/A')
-        },
-        "meters": []
-    }
-    
     # Форматируем информацию о лицевом счете
-    # Определяем тип суммы (задолженность или переплата)
-    debt_value = account_info.get('debt', 'N/A')
-    if debt_value != 'N/A':
-        try:
-            debt_num = float(debt_value.replace(' ', '').replace(',', '.').replace('руб.', '').replace('₽', ''))
-            debt_type = "Переплата" if debt_num < 0 else "Задолженность"
-        except:
-            debt_type = "Задолженность"
-    else:
-        debt_type = "Задолженность"
-    
     print(f"\nЛицевой счет: {account_info.get('number', 'N/A')}")
     print(f"• {debt_type}: {debt_value}")
     print(f"• Адрес: {account_info.get('address', 'N/A')}")
@@ -533,21 +538,6 @@ def display_results(account_info, meters_data):
     print("ТЕКСТОВЫЙ ФОРМАТ:")
     print("="*60)
     
-    # Определяем тип суммы (задолженность или переплата)
-    debt_value = account_info.get('debt', 'N/A')
-    if debt_value != 'N/A':
-        try:
-            debt_num = float(debt_value.replace(' ', '').replace(',', '.').replace('руб.', '').replace('₽', ''))
-            debt_type = "Переплата" if debt_num < 0 else "Задолженность"
-        except:
-            debt_type = "Задолженность"
-    else:
-        debt_type = "Задолженность"
-    
-    print(f"Лицевой счет: {account_info.get('number', 'N/A')}")
-    print(f"{debt_type}: {debt_value}")
-    print(f"Адрес: {account_info.get('address', 'N/A')}")
-    
     if meters_data:
         for i, meter in enumerate(meters_data, 1):
             print(f"\n{i}. {meter['name']}")
@@ -565,4 +555,4 @@ def display_results(account_info, meters_data):
 
 if __name__ == "__main__":
     args = parse_arguments()
-    main(args.login, args.password)
+    result = main(args.login, args.password)
